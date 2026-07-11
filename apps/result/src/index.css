@@ -1,0 +1,162 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #fafafa;
+  color: #111;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* 스펙 섹션 4.9 — QR 결과 페이지. 모바일 우선, 화면당 하나의 명확한 액션(4.0). */
+.result-page {
+  min-height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.result-center {
+  flex: 1;
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  padding: 24px;
+}
+
+.result-center h1 {
+  font-size: 1.6rem;
+  margin: 0;
+}
+
+.result-center p {
+  font-size: 1rem;
+  color: #555;
+  margin: 0;
+}
+
+.result-header h1 {
+  font-size: 1.6rem;
+  margin: 0 0 6px;
+  text-align: center;
+}
+
+.result-header p {
+  font-size: 0.95rem;
+  color: #555;
+  margin: 0;
+  text-align: center;
+}
+
+.result-tabs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.result-tab {
+  font-size: 1rem;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+}
+
+.result-tab.active {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+.result-content {
+  display: flex;
+  justify-content: center;
+}
+
+.result-media {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.result-image {
+  width: 100%;
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.1);
+}
+
+.result-video {
+  width: 100%;
+  border-radius: 16px;
+  background: #000;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.1);
+}
+
+.result-expiry {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0;
+}
+
+.btn-primary {
+  font-size: 1.1rem;
+  padding: 16px 32px;
+  border-radius: 16px;
+  border: none;
+  background: #111;
+  color: #fff;
+  cursor: pointer;
+  min-width: 200px;
+}
+
+.btn-primary:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  font-size: 1rem;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+}
+
+.spinner {
+  border: 6px solid #eee;
+  border-top-color: #111;
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

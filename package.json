@@ -1,0 +1,18 @@
+{
+  "name": "withmini-demo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "withmini Demo Mode monorepo (booth / admin / result apps + shared package). See docs/withmini_demo_spec.md.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:booth": "npm run dev --workspace=booth",
+    "dev:admin": "npm run dev --workspace=admin",
+    "dev:result": "npm run dev --workspace=result",
+    "build:booth": "npm run build --workspace=booth",
+    "build:admin": "npm run build --workspace=admin",
+    "build:result": "npm run build --workspace=result"
+  }
+}
