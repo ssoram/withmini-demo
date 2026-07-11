@@ -4,8 +4,21 @@ import { supabase } from '@withmini/shared'
 import type { Concept } from '@withmini/shared'
 import { useAuth } from '../lib/AuthContext'
 import { logAdminAction } from '../lib/auditLog'
+import { uploadPublicFile, removePublicFile } from '../lib/storage'
 
-// 스펙 섹션 5.2 — 컨셉 관리: 목록/추가/이름 수정/노출 토글/삭제(soft delete 우선).
+interface ConceptFormState {
+  id: string | null
+  name: string
+  image_url: string | null
+  /** 업로드 완료 전 미리보기용 로컬 objectURL. 폼을 닫을 때 revoke한다. */
+  imageLocalUrl: string | null
+}
+
+function emptyForm(): ConceptFormState {
+  return { id: null, name: '', image_url: null, imageLocalUrl: null }
+}
+
+// 스펙 섹션 5.2 — 컨셉 관리: 목록/추가/이름 수정/노출 토글/삭제(soft delete 우선) + 컨셉 이미지 업로드.
 export default function Concepts() {
   const { admin } = useAuth()
   const canWrite = admin?.role === 'super_admin'
@@ -14,11 +27,9 @@ export default function Concepts() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [newName, setNewName] = useState('')
-  const [creating, setCreating] = useState(false)
-
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingName, setEditingName] = useState('')
+  const [form, setForm] = useState<ConceptFormState | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   async function loadConcepts() {
     setLoading(true)
@@ -40,68 +51,106 @@ export default function Concepts() {
     loadConcepts()
   }, [])
 
-  async function handleCreate(event: FormEvent) {
+  function openCreateForm() {
+    setForm(emptyForm())
+  }
+
+  function openEditForm(concept: Concept) {
+    setForm({ id: concept.id, name: concept.name, image_url: concept.image_url, imageLocalUrl: null })
+  }
+
+  function closeForm() {
+    setForm((prev) => {
+      if (prev?.imageLocalUrl) URL.revokeObjectURL(prev.imageLocalUrl)
+      return null
+    })
+  }
+
+  async function handleImageFileChange(file: File) {
+    const localUrl = URL.createObjectURL(file)
+    setForm((prev) => {
+      if (!prev) return prev
+      if (prev.imageLocalUrl) URL.revokeObjectURL(prev.imageLocalUrl)
+      return { ...prev, imageLocalUrl: localUrl }
+    })
+
+    setUploadingImage(true)
+    try {
+      const url = await uploadPublicFile('concept-images', file)
+      setForm((prev) => (prev ? { ...prev, image_url: url } : prev))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  async function handleRemoveImage() {
+    if (!form?.image_url) {
+      setForm((prev) => (prev ? { ...prev, image_url: null } : prev))
+      return
+    }
+    try {
+      await removePublicFile('concept-images', form.image_url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return
+    }
+    setForm((prev) => (prev ? { ...prev, image_url: null } : prev))
+  }
+
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    if (!admin || !newName.trim()) return
+    if (!admin || !form || !form.name.trim()) return
 
-    setCreating(true)
-    const nextOrder = concepts.reduce((max, c) => Math.max(max, c.display_order), -1) + 1
+    setSaving(true)
+    setError(null)
 
-    const { data, error: insertError } = await supabase
-      .from('concepts')
-      .insert({ name: newName.trim(), display_order: nextOrder })
-      .select('*')
-      .single()
+    if (form.id) {
+      const before = concepts.find((c) => c.id === form.id) ?? null
+      const payload = { name: form.name.trim(), image_url: form.image_url }
+      const { error: updateError } = await supabase.from('concepts').update(payload).eq('id', form.id)
+      setSaving(false)
 
-    setCreating(false)
+      if (updateError) {
+        setError(updateError.message)
+        return
+      }
 
-    if (insertError) {
-      setError(insertError.message)
-      return
+      await logAdminAction({
+        adminId: admin.id,
+        action: 'concept.update',
+        targetTable: 'concepts',
+        targetId: form.id,
+        detail: {
+          before: { name: before?.name, image_url: before?.image_url },
+          after: payload,
+        },
+      })
+    } else {
+      const nextOrder = concepts.reduce((max, c) => Math.max(max, c.display_order), -1) + 1
+      const { data, error: insertError } = await supabase
+        .from('concepts')
+        .insert({ name: form.name.trim(), image_url: form.image_url, display_order: nextOrder })
+        .select('*')
+        .single()
+      setSaving(false)
+
+      if (insertError) {
+        setError(insertError.message)
+        return
+      }
+
+      await logAdminAction({
+        adminId: admin.id,
+        action: 'concept.create',
+        targetTable: 'concepts',
+        targetId: data.id,
+        detail: { name: data.name, image_url: data.image_url },
+      })
     }
 
-    await logAdminAction({
-      adminId: admin.id,
-      action: 'concept.create',
-      targetTable: 'concepts',
-      targetId: data.id,
-      detail: { name: data.name },
-    })
-
-    setNewName('')
-    await loadConcepts()
-  }
-
-  function startEdit(concept: Concept) {
-    setEditingId(concept.id)
-    setEditingName(concept.name)
-  }
-
-  async function saveEdit(concept: Concept) {
-    if (!admin || !editingName.trim() || editingName === concept.name) {
-      setEditingId(null)
-      return
-    }
-
-    const { error: updateError } = await supabase
-      .from('concepts')
-      .update({ name: editingName.trim() })
-      .eq('id', concept.id)
-
-    if (updateError) {
-      setError(updateError.message)
-      return
-    }
-
-    await logAdminAction({
-      adminId: admin.id,
-      action: 'concept.update',
-      targetTable: 'concepts',
-      targetId: concept.id,
-      detail: { before: { name: concept.name }, after: { name: editingName.trim() } },
-    })
-
-    setEditingId(null)
+    closeForm()
     await loadConcepts()
   }
 
@@ -167,6 +216,8 @@ export default function Concepts() {
     await loadConcepts()
   }
 
+  const formImageSrc = form ? form.imageLocalUrl ?? form.image_url : null
+
   return (
     <main>
       <h1>컨셉 관리</h1>
@@ -174,18 +225,11 @@ export default function Concepts() {
       {!canWrite && <p className="notice">스태프 계정은 조회만 가능합니다.</p>}
 
       {canWrite && (
-        <form className="inline-form" onSubmit={handleCreate}>
-          <input
-            type="text"
-            placeholder="새 컨셉 이름"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            required
-          />
-          <button type="submit" disabled={creating}>
-            {creating ? '추가 중...' : '컨셉 추가'}
+        <div className="toolbar">
+          <button type="button" onClick={openCreateForm}>
+            컨셉 추가
           </button>
-        </form>
+        </div>
       )}
 
       {loading ? (
@@ -194,6 +238,7 @@ export default function Concepts() {
         <table className="data-table">
           <thead>
             <tr>
+              <th>이미지</th>
               <th>순서</th>
               <th>이름</th>
               <th>노출</th>
@@ -204,24 +249,15 @@ export default function Concepts() {
           <tbody>
             {concepts.map((concept) => (
               <tr key={concept.id}>
-                <td>{concept.display_order}</td>
                 <td>
-                  {editingId === concept.id ? (
-                    <input
-                      type="text"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      onBlur={() => saveEdit(concept)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit(concept)
-                        if (e.key === 'Escape') setEditingId(null)
-                      }}
-                      autoFocus
-                    />
+                  {concept.image_url ? (
+                    <img className="thumb" src={concept.image_url} alt={concept.name} />
                   ) : (
-                    <span>{concept.name}</span>
+                    <span className="thumb thumb--empty">없음</span>
                   )}
                 </td>
+                <td>{concept.display_order}</td>
+                <td>{concept.name}</td>
                 <td>
                   <span className={concept.is_visible ? 'badge badge--on' : 'badge badge--off'}>
                     {concept.is_visible ? '노출' : '숨김'}
@@ -230,8 +266,8 @@ export default function Concepts() {
                 <td>{new Date(concept.created_at).toLocaleDateString('ko-KR')}</td>
                 {canWrite && (
                   <td className="row-actions">
-                    <button type="button" onClick={() => startEdit(concept)}>
-                      이름 수정
+                    <button type="button" onClick={() => openEditForm(concept)}>
+                      수정
                     </button>
                     <button type="button" onClick={() => toggleVisible(concept)}>
                       {concept.is_visible ? '숨기기' : '노출하기'}
@@ -245,11 +281,62 @@ export default function Concepts() {
             ))}
             {concepts.length === 0 && (
               <tr>
-                <td colSpan={canWrite ? 5 : 4}>등록된 컨셉이 없습니다.</td>
+                <td colSpan={canWrite ? 6 : 5}>등록된 컨셉이 없습니다.</td>
               </tr>
             )}
           </tbody>
         </table>
+      )}
+
+      {form && (
+        <div className="modal-backdrop" onClick={closeForm}>
+          <form className="modal-form" onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()}>
+            <h2>{form.id ? '컨셉 수정' : '컨셉 추가'}</h2>
+
+            <label>
+              이름
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+            </label>
+
+            <label>
+              컨셉 이미지
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImageFileChange(file)
+                }}
+              />
+              <span className="hint">
+                부스 앱의 컨셉 선택 카드 배경으로 사용됩니다. 가로:세로 3:4 비율에 가까운 이미지를 권장합니다.
+              </span>
+              {uploadingImage && <span> 업로드 중...</span>}
+              {formImageSrc && (
+                <div>
+                  <img className="thumb thumb--preview" src={formImageSrc} alt="컨셉 이미지 미리보기" />
+                  <button type="button" onClick={handleRemoveImage} disabled={uploadingImage}>
+                    이미지 제거
+                  </button>
+                </div>
+              )}
+            </label>
+
+            <div className="modal-form__actions">
+              <button type="button" onClick={closeForm}>
+                취소
+              </button>
+              <button type="submit" disabled={saving}>
+                {saving ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </main>
   )

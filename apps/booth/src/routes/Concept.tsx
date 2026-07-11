@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, type Concept as ConceptRow } from '@withmini/shared'
 import Screen from '../components/Screen'
 import { useBoothFlow } from '../context/BoothFlowContext'
+import { resolvePublicUrl } from '../lib/storage'
 
 // 스펙 섹션 4.2 — 컨셉 선택. concepts에서 is_visible=true를 display_order순으로 카드형 UI로 표시.
 export default function Concept() {
@@ -50,11 +51,19 @@ export default function Concept() {
       {!loading && !error && concepts.length === 0 && <p>표시할 수 있는 컨셉이 없습니다.</p>}
       {!loading && !error && concepts.length > 0 && (
         <div className="card-grid" style={{ gridTemplateColumns: `repeat(${concepts.length}, 1fr)` }}>
-          {concepts.map((concept) => (
-            <button key={concept.id} className="card" onClick={() => handleSelect(concept)}>
-              <h2>{concept.name}</h2>
-            </button>
-          ))}
+          {concepts.map((concept) => {
+            const imageUrl = concept.image_url ? resolvePublicUrl('concept-images', concept.image_url) : null
+            return (
+              <button
+                key={concept.id}
+                className={`card concept-card ${imageUrl ? 'concept-card--has-image' : ''}`}
+                style={imageUrl ? { backgroundImage: `url(${imageUrl})` } : undefined}
+                onClick={() => handleSelect(concept)}
+              >
+                <h2 className="concept-card-title">{concept.name}</h2>
+              </button>
+            )
+          })}
         </div>
       )}
     </Screen>

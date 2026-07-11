@@ -61,12 +61,15 @@ export default function Frame() {
       {!loading && !error && frames.length > 0 && (
         <div className="card-grid" style={{ gridTemplateColumns: `repeat(${Math.min(frames.length, 3)}, 1fr)` }}>
           {frames.map((frame) => (
-            <button key={frame.id} className="card" onClick={() => handleSelect(frame)}>
-              {frame.preview_image_url && (
-                <img src={resolvePublicUrl('frame-previews', frame.preview_image_url)} alt={frame.name} />
-              )}
-              <h2>{frame.name}</h2>
-              <p>{frame.slot_count}컷</p>
+            <button key={frame.id} className="card frame-card" onClick={() => handleSelect(frame)}>
+              <div className="frame-card-media">
+                {frame.preview_image_url && (
+                  <img src={resolvePublicUrl('frame-previews', frame.preview_image_url)} alt={frame.name} />
+                )}
+              </div>
+              <p className="frame-card-caption">
+                {frame.name} · {frame.slot_count}컷
+              </p>
             </button>
           ))}
         </div>

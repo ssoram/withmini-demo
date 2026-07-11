@@ -38,6 +38,12 @@ button {
   margin: 0;
 }
 
+.brand-logo {
+  font-size: 5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
 .start-screen p {
   font-size: 1.25rem;
   color: #555;
@@ -136,6 +142,79 @@ button {
 .card h2 {
   font-size: 1.4rem;
   margin: 12px 0 4px;
+}
+
+/* 컨셉 카드 (4.2) — image_url이 있으면 배경으로 꽉 채우고 컨셉명을 중앙에 오버레이 */
+.concept-card {
+  position: relative;
+  padding: 0;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-size: cover;
+  background-position: center;
+}
+
+.concept-card-title {
+  margin: 0;
+  font-size: 1.6rem;
+  color: #111;
+}
+
+.concept-card--has-image {
+  color: #fff;
+}
+
+.concept-card--has-image::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* 가독성용 반투명 어두운 오버레이 */
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.concept-card--has-image .concept-card-title {
+  position: relative;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* 프레임 카드 (4.3) — preview_image_url을 크게, 이름/슬롯 수는 아래 보조 텍스트로 */
+.frame-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.frame-card-media {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  overflow: hidden;
+  /* 투명 PNG 프레임 미리보기가 잘 보이도록 밝은 체커보드 배경 */
+  background-image: linear-gradient(45deg, #e5e5e5 25%, transparent 25%),
+    linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%),
+    linear-gradient(-45deg, transparent 75%, #e5e5e5 75%);
+  background-size: 24px 24px;
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  background-color: #fafafa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  aspect-ratio: auto;
+}
+
+.frame-card-caption {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .thumb-grid {

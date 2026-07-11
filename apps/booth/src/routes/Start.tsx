@@ -19,8 +19,8 @@ export default function Start() {
 
   return (
     <div className="start-screen" onClick={start}>
-      <h1>사진을 찍어볼까요?</h1>
-      <p>화면을 터치하면 시작합니다</p>
+      <h1 className="brand-logo">WITHMINI</h1>
+      <p>화면을 터치하세요</p>
       <button className="btn-primary" onClick={start}>
         터치하여 시작
       </button>

@@ -37,6 +37,10 @@ export default function Capture() {
 
     async function run() {
       try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          // HTTP(비보안 컨텍스트)나 카메라 API를 지원하지 않는 브라우저에서는 getUserMedia 자체가 없다.
+          throw new Error('카메라를 사용할 수 없습니다. HTTPS 주소로 접속했는지 확인해 주세요.')
+        }
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
         if (cancelled) {
           stream.getTracks().forEach((track) => track.stop())
@@ -73,7 +77,7 @@ export default function Capture() {
       } catch (err) {
         if (cancelled) return
         setPhase('error')
-        setError(err instanceof Error ? err.message : '카메라를 사용할 수 없습니다.')
+        setError(describeCameraError(err))
         setIsBusy(false)
       }
     }
@@ -117,6 +121,19 @@ export default function Capture() {
       )}
     </Screen>
   )
+}
+
+// getUserMedia 실패 원인을 사용자가 알 수 있는 문구로 바꾼다.
+function describeCameraError(err: unknown): string {
+  if (err instanceof Error && err.message.includes('HTTPS')) {
+    // run()에서 이미 사용자 문구로 던진 에러(보안 컨텍스트 아님/API 미지원)는 그대로 사용한다.
+    return err.message
+  }
+  const name = err instanceof DOMException ? err.name : undefined
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return '카메라 권한을 허용해 주세요.'
+  }
+  return '카메라를 사용할 수 없습니다. HTTPS 주소로 접속했는지 확인해 주세요.'
 }
 
 function wait(ms: number) {
