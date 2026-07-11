@@ -142,7 +142,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      // supabase/migrations/0007_complete_session_rpc.sql — booth가 촬영 완료 처리(sessions
+      // status: in_progress → completed)에 사용하는 security definer RPC. sessions 테이블의
+      // anon SELECT/UPDATE가 막혀 있어(0005/0007) 직접 update 대신 이 함수를 통해서만 완료 처리한다.
+      complete_session: {
+        Args: {
+          p_session_id: string
+          p_raw_photo_urls: string[]
+          p_selected_photo_urls: string[]
+          p_result_image_url: string
+          p_qr_url: string
+        }
+        Returns: void
+      }
     }
   }
 }
