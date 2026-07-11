@@ -62,18 +62,29 @@ export default function Generate() {
       }
       const sessionId = sessionIdRef.current
 
-      // 1) 업로드 전에 sessions row부터 만든다 (위 설명 참고). 재시도 시에도 같은 sessionId를 재사용하므로 upsert.
-      const { error: createError } = await supabase.from('sessions').upsert(
-        {
-          id: sessionId,
-          concept_id: concept.id,
-          frame_id: frame.id,
-          status: 'in_progress',
-        },
-        { onConflict: 'id' }
-      )
-      if (createError) {
-        throw new Error(createError.message)
+      // 1) 업로드 전에 sessions row부터 만든다 (위 설명 참고). 재시도 시에도 같은 sessionId를 재사용하는데,
+      //    0005_sessions_select_hardening으로 anon SELECT 정책이 사라져 upsert(INSERT ... ON CONFLICT)가
+      //    RLS(42501)에 막힌다 — ON CONFLICT 판정 자체가 SELECT 권한을 요구하기 때문. 그래서 먼저 순수
+      //    INSERT를 시도하고, 재시도라 이미 같은 id로 row가 있는 경우(23505 unique violation)에만
+      //    UPDATE로 대체한다. INSERT/UPDATE 모두 .select()는 붙이지 않는다(anon SELECT 정책 없음).
+      const { error: insertError } = await supabase.from('sessions').insert({
+        id: sessionId,
+        concept_id: concept.id,
+        frame_id: frame.id,
+        status: 'in_progress',
+      })
+      if (insertError) {
+        if (insertError.code === '23505') {
+          const { error: retryUpdateError } = await supabase
+            .from('sessions')
+            .update({ status: 'in_progress' })
+            .eq('id', sessionId)
+          if (retryUpdateError) {
+            throw new Error(retryUpdateError.message)
+          }
+        } else {
+          throw new Error(insertError.message)
+        }
       }
 
       // 2) 촬영 원본 8장을 session-raw/{sessionId}/에 업로드
