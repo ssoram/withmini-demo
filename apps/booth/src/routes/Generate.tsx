@@ -64,27 +64,18 @@ export default function Generate() {
 
       // 1) 업로드 전에 sessions row부터 만든다 (위 설명 참고). 재시도 시에도 같은 sessionId를 재사용하는데,
       //    0005_sessions_select_hardening으로 anon SELECT 정책이 사라져 upsert(INSERT ... ON CONFLICT)가
-      //    RLS(42501)에 막힌다 — ON CONFLICT 판정 자체가 SELECT 권한을 요구하기 때문. 그래서 먼저 순수
-      //    INSERT를 시도하고, 재시도라 이미 같은 id로 row가 있는 경우(23505 unique violation)에만
-      //    UPDATE로 대체한다. INSERT/UPDATE 모두 .select()는 붙이지 않는다(anon SELECT 정책 없음).
+      //    RLS(42501)에 막힌다 — ON CONFLICT 판정 자체가 SELECT 권한을 요구하기 때문. 그래서 순수 INSERT만
+      //    시도한다. 재시도라 이미 같은 id로 row가 있는 경우(23505 unique violation)는 해당 row가 이미
+      //    in_progress로 존재한다는 뜻이므로 별도 조치 없이 성공으로 간주하고 넘어간다(anon update 정책도
+      //    같은 이유로 no-op이라 더 이상 사용하지 않음 — 아래 4단계 참고). .select()는 붙이지 않는다.
       const { error: insertError } = await supabase.from('sessions').insert({
         id: sessionId,
         concept_id: concept.id,
         frame_id: frame.id,
         status: 'in_progress',
       })
-      if (insertError) {
-        if (insertError.code === '23505') {
-          const { error: retryUpdateError } = await supabase
-            .from('sessions')
-            .update({ status: 'in_progress' })
-            .eq('id', sessionId)
-          if (retryUpdateError) {
-            throw new Error(retryUpdateError.message)
-          }
-        } else {
-          throw new Error(insertError.message)
-        }
+      if (insertError && insertError.code !== '23505') {
+        throw new Error(insertError.message)
       }
 
       // 2) 촬영 원본 8장을 session-raw/{sessionId}/에 업로드
@@ -110,19 +101,25 @@ export default function Generate() {
       const resultPath = `${sessionId}/result.png`
       await uploadBlob('session-results', resultPath, resultBlob, 'image/png')
 
-      // 4) sessions row 갱신. result_image_url 등은 signed URL이 아닌 Storage 오브젝트 경로를 저장한다.
-      const { error: updateError } = await supabase
-        .from('sessions')
-        .update({
-          raw_photo_urls: rawPaths,
-          selected_photo_urls: selectedPaths,
-          result_image_url: resultPath,
-          qr_url: `${RESULT_BASE_URL}/${sessionId}`,
-          status: 'completed',
-        })
-        .eq('id', sessionId)
-      if (updateError) {
-        throw new Error(updateError.message)
+      // 4) sessions row를 completed로 전이한다. result_image_url 등은 signed URL이 아닌 Storage
+      //    오브젝트 경로를 저장한다. 일반 UPDATE는 쓰지 않는다 — PostgreSQL은 UPDATE의 WHERE 절이
+      //    대상 행을 찾을 때도 SELECT 권한을 요구하는데, anon SELECT 정책이 없어(0005) 조용히
+      //    0건 갱신되는 no-op이 되기 때문(에러 없이 실패). 그래서 architect가 만든 security definer
+      //    RPC(complete_session, 0007_complete_session_rpc.sql)로 완료 전이를 대신한다 — 이 함수는
+      //    RLS를 우회해 status='in_progress'이고 미만료인 세션만 completed로 전이시키고, 조건이
+      //    맞지 않으면 exception을 던진다.
+      // NOTE: Database.public.Functions가 아직 빈 타입이라 rpc() 인자/반환 타입이 맞지 않는다.
+      // types.ts는 계약 파일이라 직접 고치지 않고 이 호출 한 곳만 로컬 캐스팅으로 우회한다
+      // (architect가 추후 Functions 타입 정식 반영 검토 예정).
+      const { error: completeError } = await (supabase as any).rpc('complete_session', {
+        p_session_id: sessionId,
+        p_raw_photo_urls: rawPaths,
+        p_selected_photo_urls: selectedPaths,
+        p_result_image_url: resultPath,
+        p_qr_url: `${RESULT_BASE_URL}/${sessionId}`,
+      })
+      if (completeError) {
+        throw new Error(completeError.message)
       }
 
       // 5) /print-animation은 같은 브라우저 탭에서 곧바로 이어지므로, 방금 만든 합성 이미지를

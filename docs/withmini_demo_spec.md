@@ -353,7 +353,8 @@ storage/
 | DB | role 기반 정책 | super_admin/staff 권한에 따라 UPDATE/DELETE 정책 분리 (섹션 2 표 참고) |
 | Storage | signed URL 사용 | 세션 관련 버킷(`session-raw`, `session-results`, `session-timelapse`)은 public이 아닌 signed URL로만 접근, URL 추측으로 타인 결과물 열람 방지 |
 | Storage | 버킷별 접근 정책 분리 | 프레임 관련(공개 읽기 가능)과 세션 관련(비공개)을 명확히 분리 |
-| DB | `sessions` 테이블 anon SELECT 제한 | `sessions` 테이블은 anon(비로그인) SELECT를 허용하지 않는다. RLS는 행 단위로 평가되어 쿼리 조건과 무관하게 조건 없는 SELECT로 전체 세션 id를 나열(enumeration)할 수 있어, "세션 ID(UUID) 추측 불가능" 전제를 무력화하기 때문이다. 공개 조회(QR 결과 페이지, 출력 애니메이션 화면의 결과 이미지 조회 등)는 반드시 service_role 기반 Edge Function(`get-session-media`)을 통한다. booth의 INSERT/UPDATE(세션 생성/갱신)는 `.select()` 없이 이루어지므로 이 제한과 무관하게 그대로 동작한다. 관리자 페이지(`sessions` 통계 조회)는 인증된 관리자 전용 SELECT 정책으로 별도 허용한다. |
+| DB | `sessions` 테이블 anon SELECT 제한 | `sessions` 테이블은 anon(비로그인) SELECT를 허용하지 않는다. RLS는 행 단위로 평가되어 쿼리 조건과 무관하게 조건 없는 SELECT로 전체 세션 id를 나열(enumeration)할 수 있어, "세션 ID(UUID) 추측 불가능" 전제를 무력화하기 때문이다. 공개 조회(QR 결과 페이지, 출력 애니메이션 화면의 결과 이미지 조회 등)는 반드시 service_role 기반 Edge Function(`get-session-media`)을 통한다. booth의 세션 생성(INSERT)은 이 제한과 무관하게 그대로 동작한다. 관리자 페이지(`sessions` 통계 조회)는 인증된 관리자 전용 SELECT 정책으로 별도 허용한다. |
+| DB | `sessions` 완료 처리는 `complete_session` RPC 경유 | PostgreSQL은 UPDATE의 WHERE절이 대상 행을 읽는 단계에서도 SELECT 정책을 요구하므로, anon SELECT가 차단된 상태에서 booth가 직접 `UPDATE ... WHERE id = ...`로 세션을 완료 처리하면 0건 갱신되면서도 성공 응답을 반환하는 문제가 있었다(실사용 중 발견, 0007 마이그레이션으로 수정). 따라서 anon의 직접 `sessions` UPDATE 권한은 제거하고, `complete_session(p_session_id, p_raw_photo_urls, p_selected_photo_urls, p_result_image_url, p_qr_url)` security definer RPC로만 촬영 완료 처리(원본/선택 사진 경로, 결과 이미지, QR URL 반영 및 status를 `completed`로 전이)를 허용한다. RPC 내부에서 대상 세션이 존재하고 `status='in_progress'`이며 미만료 상태일 때만 갱신하도록 검증하므로, 임의 UPDATE를 열어두는 것보다 공격면이 좁다. |
 | Auth | 관리자 로그인 브루트포스 방어 | Supabase Auth 기본 rate limit 확인, 필요시 추가 제한 |
 | Auth | 세션/토큰 만료 정책 | JWT 만료시간 및 refresh token 정책 검토 |
 | Auth | 계정 비활성화 처리 | 퇴사자 계정은 삭제 대신 `is_active=false`로 즉시 접근 차단 |
