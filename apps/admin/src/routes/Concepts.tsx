@@ -30,6 +30,7 @@ export default function Concepts() {
   const [form, setForm] = useState<ConceptFormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null)
 
   async function loadConcepts() {
     setLoading(true)
@@ -53,10 +54,12 @@ export default function Concepts() {
 
   function openCreateForm() {
     setForm(emptyForm())
+    setImageUploadError(null)
   }
 
   function openEditForm(concept: Concept) {
     setForm({ id: concept.id, name: concept.name, image_url: concept.image_url, imageLocalUrl: null })
+    setImageUploadError(null)
   }
 
   function closeForm() {
@@ -75,11 +78,12 @@ export default function Concepts() {
     })
 
     setUploadingImage(true)
+    setImageUploadError(null)
     try {
       const url = await uploadPublicFile('concept-images', file)
       setForm((prev) => (prev ? { ...prev, image_url: url } : prev))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setImageUploadError(e instanceof Error ? e.message : String(e))
     } finally {
       setUploadingImage(false)
     }
@@ -102,6 +106,11 @@ export default function Concepts() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!admin || !form || !form.name.trim()) return
+    if (uploadingImage) {
+      // 저장 버튼이 업로드 중엔 비활성화되지만, 방어적으로 한 번 더 막는다.
+      setError('이미지 업로드가 끝날 때까지 기다려주세요.')
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -316,7 +325,8 @@ export default function Concepts() {
               <span className="hint">
                 부스 앱의 컨셉 선택 카드 배경으로 사용됩니다. 가로:세로 3:4 비율에 가까운 이미지를 권장합니다.
               </span>
-              {uploadingImage && <span> 업로드 중...</span>}
+              {uploadingImage && <span> 업로드 중... (완료 전까지 저장할 수 없습니다)</span>}
+              {imageUploadError && <p className="form-error">{imageUploadError}</p>}
               {formImageSrc && (
                 <div>
                   <img className="thumb thumb--preview" src={formImageSrc} alt="컨셉 이미지 미리보기" />
@@ -331,8 +341,8 @@ export default function Concepts() {
               <button type="button" onClick={closeForm}>
                 취소
               </button>
-              <button type="submit" disabled={saving}>
-                {saving ? '저장 중...' : '저장'}
+              <button type="submit" disabled={saving || uploadingImage}>
+                {saving ? '저장 중...' : uploadingImage ? '업로드 완료 대기 중...' : '저장'}
               </button>
             </div>
           </form>

@@ -70,6 +70,8 @@ export default function Frames() {
   const [saving, setSaving] = useState(false)
   const [uploadingPreview, setUploadingPreview] = useState(false)
   const [uploadingVideo, setUploadingVideo] = useState(false)
+  const [previewUploadError, setPreviewUploadError] = useState<string | null>(null)
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null)
 
   async function loadData() {
     setLoading(true)
@@ -105,6 +107,8 @@ export default function Frames() {
 
   function openCreateForm() {
     setForm(emptyForm(concepts[0]?.id ?? ''))
+    setPreviewUploadError(null)
+    setVideoUploadError(null)
   }
 
   function openEditForm(frame: Frame) {
@@ -122,6 +126,8 @@ export default function Frames() {
       preview_image_url: frame.preview_image_url,
       previewLocalUrl: null,
     })
+    setPreviewUploadError(null)
+    setVideoUploadError(null)
   }
 
   function closeForm() {
@@ -171,15 +177,19 @@ export default function Frames() {
     setForm((prev) => {
       if (!prev) return prev
       if (prev.previewLocalUrl) URL.revokeObjectURL(prev.previewLocalUrl)
+      // preview_image_url은 업로드가 성공할 때까지 건드리지 않는다(수정 화면에서 이미지를 교체하다
+      // 업로드가 실패해도 기존 유효한 이미지가 사라지지 않도록). 제출 버튼은 업로드 중 비활성화되므로
+      // "미완료 업로드로 저장되는" 레이스는 아래 disabled 조건으로 막는다.
       return { ...prev, previewLocalUrl: localUrl }
     })
 
     setUploadingPreview(true)
+    setPreviewUploadError(null)
     try {
       const url = await uploadPublicFile('frame-previews', file)
       setForm((prev) => (prev ? { ...prev, preview_image_url: url } : prev))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setPreviewUploadError(e instanceof Error ? e.message : String(e))
     } finally {
       setUploadingPreview(false)
     }
@@ -187,11 +197,12 @@ export default function Frames() {
 
   async function handleVideoUpload(file: File) {
     setUploadingVideo(true)
+    setVideoUploadError(null)
     try {
       const url = await uploadPublicFile('frame-videos', file)
       setForm((prev) => (prev ? { ...prev, frame_video_url: url } : prev))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setVideoUploadError(e instanceof Error ? e.message : String(e))
     } finally {
       setUploadingVideo(false)
     }
@@ -212,6 +223,17 @@ export default function Frames() {
     if (form.slots.length === 0) {
       setError('슬롯을 최소 1개 이상 추가해주세요.')
       return
+    }
+    if (uploadingPreview || uploadingVideo) {
+      // 저장 버튼이 업로드 중엔 비활성화되지만, 방어적으로 한 번 더 막는다.
+      setError('이미지/영상 업로드가 끝날 때까지 기다려주세요.')
+      return
+    }
+    if (!form.preview_image_url) {
+      const proceed = window.confirm(
+        '미리보기 이미지가 없습니다. 이미지가 없으면 촬영 앱에서 이 프레임으로 합성할 수 없습니다. 그래도 저장하시겠습니까?'
+      )
+      if (!proceed) return
     }
 
     setSaving(true)
@@ -471,7 +493,8 @@ export default function Frames() {
                 촬영 앱 합성은 선택한 사진들을 먼저 그린 뒤 이 이미지를 그 위에 덮어씌우는 방식입니다.
                 사진이 들어갈 자리가 투명하게 뚫린 PNG 템플릿을 업로드해주세요.
               </span>
-              {uploadingPreview && <span> 업로드 중...</span>}
+              {uploadingPreview && <span> 업로드 중... (완료 전까지 저장할 수 없습니다)</span>}
+              {previewUploadError && <p className="form-error">{previewUploadError}</p>}
             </label>
 
             <div className="field-block">
@@ -489,7 +512,8 @@ export default function Frames() {
                   if (file) handleVideoUpload(file)
                 }}
               />
-              {uploadingVideo && <span> 업로드 중...</span>}
+              {uploadingVideo && <span> 업로드 중... (완료 전까지 저장할 수 없습니다)</span>}
+              {videoUploadError && <p className="form-error">{videoUploadError}</p>}
               {form.frame_video_url && <p className="hint">{form.frame_video_url}</p>}
             </label>
 
@@ -512,8 +536,8 @@ export default function Frames() {
               <button type="button" onClick={closeForm}>
                 취소
               </button>
-              <button type="submit" disabled={saving}>
-                {saving ? '저장 중...' : '저장'}
+              <button type="submit" disabled={saving || uploadingPreview || uploadingVideo}>
+                {saving ? '저장 중...' : uploadingPreview || uploadingVideo ? '업로드 완료 대기 중...' : '저장'}
               </button>
             </div>
           </form>
